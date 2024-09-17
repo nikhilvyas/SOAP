@@ -9,7 +9,7 @@ optim = SOAP(lr = 3e-3, betas=(.95, .95), weight_decay=.01, pecondition_frequenc
 ```
 
 
-While in the paper our experiments are restricted to Transformers which only have 2D layers, the code supports nD layers. If you are using the optimizr for (n > 2) nD layers please see additional hyperparameters in soap.py.
+While in the paper our experiments are restricted to Transformers which only have 2D layers, the code supports nD layers. If you are using the optimizer for (n > 2) nD layers please see additional hyperparameters in soap.py.
 
 
 We will release an improved version of the optimizer with support for lower precision and distributed training. 
