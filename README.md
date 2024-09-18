@@ -1,6 +1,6 @@
 # SOAP
 
-This is the official (preliminary) implementation of the SOAP optimizer in the paper [https://arxiv.org/abs/2409.11321](https://arxiv.org/abs/2409.11321). To use, copy the soap.py file to your codebase and use SOAP optimizer in the following fashion:
+This is the official (preliminary) implementation of the SOAP optimizer from [SOAP: Improving and Stabilizing Shampoo using Adam](https://arxiv.org/abs/2409.11321). To use, copy the soap.py file to your codebase and use SOAP optimizer in the following fashion:
 
 ```
 from soap import SOAP
