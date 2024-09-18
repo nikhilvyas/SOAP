@@ -8,6 +8,7 @@ from soap import SOAP
 optim = SOAP(lr = 3e-3, betas=(.95, .95), weight_decay=.01, precondition_frequency=10)
 ```
 
+We recommend trying it with as large batch size as possible, as expected from second order otpimizers, the benefits are larger at larger batch sizes.
 
 While in the paper our experiments are restricted to Transformers which only have 2D layers, the code supports nD layers. If you are using the optimizer for (n > 2) nD layers please see additional hyperparameters in soap.py.
 
