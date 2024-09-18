@@ -5,7 +5,7 @@ This is the official (preliminary) implementation of the SOAP optimizer from [SO
 ```
 from soap import SOAP
 
-optim = SOAP(lr = 3e-3, betas=(.95, .95), weight_decay=.01, pecondition_frequency=10)
+optim = SOAP(lr = 3e-3, betas=(.95, .95), weight_decay=.01, precondition_frequency=10)
 ```
 
 
