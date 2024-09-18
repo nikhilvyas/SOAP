@@ -10,7 +10,7 @@ from itertools import chain
 
 class SOAP(optim.Optimizer):
     """
-    Implements SOAP algorithm (https://arxiv.org/abs/??).
+    Implements SOAP algorithm (https://arxiv.org/abs/2409.11321).
 
     Parameters:
         params (`Iterable[nn.parameter.Parameter]`):
