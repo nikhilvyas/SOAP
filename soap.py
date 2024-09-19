@@ -23,15 +23,13 @@ class SOAP(optim.Optimizer):
             If >= 0, use this beta for the preconditioner (L and R in paper, state['GG'] below) moving average instead of betas[1].
         eps (`float`, *optional*, defaults to 1e-08):
             Adam's epsilon for numerical stability.
-        weight_decay (`float`, *optional*, defaults to 0.0): weight decay coefficient.
-        correct_bias (`bool`, *optional*, defaults to `True`):
-            Whether or not to correct bias in Adam.
+        weight_decay (`float`, *optional*, defaults to 0.01): weight decay coefficient.
         precondition_frequency (`int`, *optional*, defaults to 10):
             How often to update the preconditioner.
         max_precond_dim (`int`, *optional*, defaults to 10000):
             Maximum dimension of the preconditioner.
             Set to 10000, so that we exclude most common vocab sizes while including layers.
-        merge_dims (`bool`, *optional*, defaults to `True`):
+        merge_dims (`bool`, *optional*, defaults to `False`):
             Whether or not to merge dimensions of the preconditioner.
         precondition_1d (`bool`, *optional*, defaults to `False`):
             Whether or not to precondition 1D gradients.
