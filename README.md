@@ -14,3 +14,6 @@ While in the paper our experiments are restricted to Transformers which only hav
 
 
 We will release an improved version of the optimizer with support for lower precision and distributed training. 
+
+
+Haydn Jones has implemented a JAX version at https://github.com/haydn-jones/SOAP_JAX, though we have not yet verified the implementation.
