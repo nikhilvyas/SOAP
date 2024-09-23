@@ -33,6 +33,10 @@ class SOAP(optim.Optimizer):
             Whether or not to merge dimensions of the preconditioner.
         precondition_1d (`bool`, *optional*, defaults to `False`):
             Whether or not to precondition 1D gradients.
+        normalize_grads (`bool`, *optional*, defaults to `False`):
+            Whether or not to normalize gradients per layer. 
+            Helps at large precondition_frequency (~100 in our experiments), 
+            but hurts performance at small precondition_frequency (~10 in our experiments).
         data_format (`str`, *optional*, defaults to `channels_first`):
             Data format of the input for convolutional layers.
             Should be "channels_last" for data_format of NHWC and "channels_first" for NCHW.
@@ -52,6 +56,7 @@ class SOAP(optim.Optimizer):
         max_precond_dim: int=10000, # 
         merge_dims: bool = False, # Merge dimensions till the product of the dimensions is less than or equal to max_precond_dim.
         precondition_1d: bool = False,
+        normalize_grads: bool = False,
         data_format: str = "channels_first",
         correct_bias: bool = True,
     ):
@@ -65,6 +70,7 @@ class SOAP(optim.Optimizer):
             "max_precond_dim": max_precond_dim,
             "merge_dims": merge_dims,
             "precondition_1d": precondition_1d,
+            "normalize_grads": normalize_grads,
             "correct_bias": correct_bias,
         }
         super().__init__(params, defaults)
@@ -176,7 +182,8 @@ class SOAP(optim.Optimizer):
                 norm_grad = self.project_back(exp_avg_projected / denom, state, merge_dims=group["merge_dims"],
                                                  max_precond_dim=group['max_precond_dim'])
 
-                
+                if group["normalize_grads"]:
+                    norm_grad = norm_grad / (1e-30+torch.mean(norm_grad**2)**0.5)
                 
                 p.add_(norm_grad, alpha=-step_size)
                 
