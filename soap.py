@@ -171,10 +171,11 @@ class SOAP(optim.Optimizer):
 
             # Decay the first and second moment running average coefficient
             # In-place operations to update the averages at the same time
-            torch._foreach_lerp_(exp_avg, grad, beta1)
+            torch._foreach_lerp_(exp_avg, grad, 1 - beta1)
             torch._foreach_mul_(exp_avg_sq, beta2)
             torch._foreach_addcmul_(exp_avg_sq, grad_projected, grad_projected, value=1 - beta2)
-            torch._foreach_sqrt_out(exp_avg_sq, grad_projected)
+            torch._foreach_copy_(exp_avg_sq, grad_projected)
+            torch._foreach_sqrt_(grad_projected)
             torch._foreach_maximum_(grad_projected, group["eps"])
             p_list = p
 
