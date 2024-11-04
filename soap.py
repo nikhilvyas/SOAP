@@ -156,6 +156,9 @@ class SOAP(optim.Optimizer):
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
                 vals.append((p, grad, grad_projected, exp_avg, exp_avg_sq))
 
+            if not vals:
+                continue
+            
             p, grad, grad_projected, exp_avg, exp_avg_sq = zip(*vals)
             beta1, beta2 = group["betas"]
 
