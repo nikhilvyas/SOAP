@@ -5,7 +5,6 @@ from typing import List
 import torch
 import torch.optim as optim
 
-from .utils import init_preconditioner, update_preconditioner, project, beta_debias, exp_avg_sq_, update_param_, set_
 
 _mode = None
 
