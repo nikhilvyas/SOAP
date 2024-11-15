@@ -106,14 +106,17 @@ class SOAP(optim.Optimizer):
         return new_grad               
 
     @torch.no_grad()
-    def step(self):
+    def step(self, closure = None):
         """
         Performs a single optimization step.
 
         Arguments:
             closure (`Callable`, *optional*): A closure that reevaluates the model and returns the loss.
         """
-        loss = None
+        if closure is None:
+            loss = None
+        else:
+            loss = closure()
         
         for group in self.param_groups:
             for p in group["params"]:
