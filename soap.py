@@ -48,7 +48,7 @@ class SOAP(optim.Optimizer):
         self,
         params,
         lr: float = 3e-3,
-        betas=(0.95, 0.95),
+        betas=(0.95, 0.995),
         shampoo_beta: float= -1,
         eps: float = 1e-8,
         weight_decay: float = 0.01,
@@ -59,11 +59,12 @@ class SOAP(optim.Optimizer):
         normalize_grads: bool = False,
         data_format: str = "channels_first",
         correct_bias: bool = True,
+        correct_shampoo_beta_by_freq: bool = True,
     ):
         defaults = {
             "lr": lr,
             "betas": betas,
-            "shampoo_beta": shampoo_beta,
+            "shampoo_beta": shampoo_beta, 
             "eps": eps,
             "weight_decay": weight_decay,
             "precondition_frequency": precondition_frequency,
@@ -72,6 +73,7 @@ class SOAP(optim.Optimizer):
             "precondition_1d": precondition_1d,
             "normalize_grads": normalize_grads,
             "correct_bias": correct_bias,
+            "correct_shampoo_beta_by_freq": correct_shampoo_beta_by_freq
         }
         super().__init__(params, defaults)
         self._data_format = data_format
@@ -138,6 +140,7 @@ class SOAP(optim.Optimizer):
                         grad,
                         state,
                         precondition_frequency=group['precondition_frequency'],
+                        correct_shampoo_beta_by_freq=group['correct_shampoo_beta_by_freq'],
                         precondition_1d=group['precondition_1d'],
                         shampoo_beta=(group['shampoo_beta'] if group['shampoo_beta'] >= 0 else group["betas"][1]),
                         max_precond_dim=group['max_precond_dim'],
@@ -207,8 +210,8 @@ class SOAP(optim.Optimizer):
         
         return loss
     
-    def init_preconditioner(self, grad, state, precondition_frequency=10, 
-                            shampoo_beta=0.95, max_precond_dim=10000, precondition_1d=False,
+    def init_preconditioner(self, grad, state, precondition_frequency=10, correct_shampoo_beta_by_freq=True,
+                            shampoo_beta=0.995, max_precond_dim=10000, precondition_1d=False,
                             merge_dims=False):
         """
         Initializes the preconditioner matrices (L and R in the paper).
@@ -231,7 +234,7 @@ class SOAP(optim.Optimizer):
                     
         state['Q'] = None # Will hold all the eigenbases of the preconditioner.
         state['precondition_frequency'] = precondition_frequency
-        state['shampoo_beta'] = shampoo_beta          
+        state['shampoo_beta'] =  shampoo_beta if not correct_shampoo_beta_by_freq else shampoo_beta ** precondition_frequency          
         
     def project(self, grad, state, merge_dims=False, max_precond_dim=10000):
         """
