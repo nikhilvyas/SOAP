@@ -106,14 +106,17 @@ class SOAP(optim.Optimizer):
         return new_grad               
 
     @torch.no_grad()
-    def step(self):
+    def step(self, closure = None):
         """
         Performs a single optimization step.
 
         Arguments:
             closure (`Callable`, *optional*): A closure that reevaluates the model and returns the loss.
         """
-        loss = None
+        if closure is None:
+            loss = None
+        else:
+            loss = closure()
         
         for group in self.param_groups:
             for p in group["params"]:
@@ -161,15 +164,16 @@ class SOAP(optim.Optimizer):
 
                 # Decay the first and second moment running average coefficient
                 # In-place operations to update the averages at the same time
-                exp_avg.mul_(beta1).add_(grad, alpha=(1.0 - beta1))
+                exp_avg.mul_(beta1).add_(grad_projected, alpha=(1.0 - beta1))
                 exp_avg_sq.mul_(beta2).add_(grad_projected.square(), alpha=(1.0 - beta2))
 
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
                 
                 # Projecting the exponential moving average of gradients to the eigenbases of Shampoo's preconditioner 
                 # i.e. projecting to the eigenbases of matrices in state['GG']
-                exp_avg_projected = self.project(exp_avg, state, merge_dims=group["merge_dims"],
-                                                 max_precond_dim=group['max_precond_dim'])
+                # exp_avg_projected = self.project(exp_avg, state, merge_dims=group["merge_dims"],
+                #                                  max_precond_dim=group['max_precond_dim'])
+                exp_avg_projected = exp_avg
                 
                 step_size = group["lr"]
                 if group["correct_bias"]:
@@ -266,6 +270,8 @@ class SOAP(optim.Optimizer):
         """
         Updates the preconditioner matrices and the eigenbases (L, R, Q_L, Q_R in the paper).
         """
+        if state["Q"] is not None:
+            state["exp_avg"] = self.project_back(state["exp_avg"], state, merge_dims=merge_dims, max_precond_dim=max_precond_dim)
         if grad.dim() == 1:
             if precondition_1d and grad.shape[0] <= max_precond_dim:
                 state['GG'][0].lerp_(grad.unsqueeze(1) @ grad.unsqueeze(0), 1-state['shampoo_beta'])
@@ -294,7 +300,11 @@ class SOAP(optim.Optimizer):
         if state['Q'] is None:
             state['Q'] = self.get_orthogonal_matrix(state['GG'])
         if state['step'] > 0 and state['step'] % state['precondition_frequency'] == 0:
-            state['Q'] = self.get_orthogonal_matrix_QR(state, max_precond_dim, merge_dims)           
+            state['Q'] = self.get_orthogonal_matrix_QR(state, max_precond_dim, merge_dims)
+            # state['Q'] = self.get_fast_QR(state, max_precond_dim, merge_dims)             
+
+        if state["step"] > 0:
+            state["exp_avg"] = self.project(state["exp_avg"], state, merge_dims=merge_dims, max_precond_dim=max_precond_dim) 
 
     def project_back(self, grad, state, merge_dims=False, max_precond_dim=10000):
         """
@@ -418,3 +428,5 @@ class SOAP(optim.Optimizer):
                 
         state['exp_avg_sq'] = exp_avg_sq
         return final
+    
+    
