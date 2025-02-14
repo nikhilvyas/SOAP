@@ -124,7 +124,7 @@ class SOAP(torch.optim.Optimizer):
 
                     continue
 
-                # Project gradients to the eigenbasis of Shampoo's preconditioner
+                # Project gradient to the eigenbasis of Shampoo's preconditioner
                 g_proj = self.project(g, state)
 
                 lists.append((p, g, g_proj, state["exp_avg"], state["exp_avg_sq"]))
@@ -134,13 +134,14 @@ class SOAP(torch.optim.Optimizer):
 
             params, grads, grads_proj, exp_avg, exp_avg_sq = zip(*lists, strict=True)
 
-            # Moments
+            # Bias correction
             beta1, beta2, beta3 = group["betas"]
 
             beta1_ = 1 - (1 - beta1) / (1 - beta1**step)
             beta2_ = 1 - (1 - beta2) / (1 - beta2**step)
             beta3_ = 1 - (1 - beta3) / (1 - beta3 ** (step + 1))
 
+            # Moments
             torch._foreach_lerp_(exp_avg, grads_proj, 1 - beta1_)
             torch._foreach_mul_(exp_avg_sq, beta2_)
             torch._foreach_addcmul_(exp_avg_sq, grads_proj, grads_proj, 1 - beta2_)
@@ -150,13 +151,11 @@ class SOAP(torch.optim.Optimizer):
             # Update
             updates = []
 
-            for p, g, ea, ea_sq in zip(params, grads, exp_avg, exp_avg_sq, strict=True):
+            for p, g, mean, var in zip(params, grads, exp_avg, exp_avg_sq, strict=True):
                 state = self.state[p]
 
-                # Adam in the eigenbasis of Shampoo's preconditioner
-                u = ea * torch.rsqrt_(ea_sq + group["eps"] ** 2)
-
-                # Project updates back from the eigenbasis of Shampoo's preconditioner
+                # Adam's update in the eigenbasis of Shampoo's preconditioner
+                u = adam(mean, var, eps=group["eps"])
                 u = self.project(u, state, back=True)
 
                 updates.append(u)
@@ -232,7 +231,9 @@ class SOAP(torch.optim.Optimizer):
         if state["Q"] is None:
             state["Q"] = self.get_orthogonal_matrix(state)
         elif state["step"] < precondition_warmup or state["step"] % precondition_frequency == 0:
+            state["exp_avg"] = self.project(state["exp_avg"], state, back=True)
             state["Q"] = self.get_orthogonal_matrix_QR(state)
+            state["exp_avg"] = self.project(state["exp_avg"], state)
 
     def project(self, grad, state, back: bool = False):
         """Projects the gradient to/from the eigenbasis of the preconditioner."""
@@ -289,3 +290,7 @@ class SOAP(torch.optim.Optimizer):
                 Q.append(q)
 
         return Q
+
+
+def adam(mean, var, eps=1e-8):
+    return torch.rsqrt_(var + eps**2).mul_(mean)
