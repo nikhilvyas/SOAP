@@ -33,10 +33,10 @@ class SOAP(torch.optim.Optimizer):
             The maximum size for the preconditioner. If a dimension is larger than this
             size, it is not preconditioned.
         merge_dims:
-            Whether to merge the dimensions of gradients or not. For example, a weight
-            tensor of shape (256, 256, 3, 3) would become (256, 2304). The first
-            dimension is never merged with the others, as it is assumed to be the
-            output dimension. This option increases the size of precondition matrices.
+            Whether to merge the dimensions of gradients or not. For example, a gradient
+            of shape (256, 256, 3, 3) would become (256, 2304). The first dimension is
+            never merged with the others, as it is assumed to be the output dimension.
+            This option significantly increases the size of precondition matrices.
     """
 
     def __init__(
@@ -202,7 +202,7 @@ class SOAP(torch.optim.Optimizer):
                 if s > max_precond_size or s == 1:
                     state["GG"].append(None)
                 else:
-                    state["GG"].append(torch.zeros(s, s, device=grad.device))
+                    state["GG"].append(torch.zeros(s, s, dtype=grad.dtype, device=grad.device))
         else:
             state["GG"].append(None)
 
@@ -261,9 +261,11 @@ class SOAP(torch.optim.Optimizer):
             if m is None:
                 Q.append(None)
             else:
-                _, q = torch.linalg.eigh(
-                    m.to(torch.float32) + 1e-16 * torch.eye(*m.shape, device=m.device)
+                m32 = m.to(dtype=torch.float32)
+                _, q32 = torch.linalg.eigh(
+                    m32 + 1e-12 * torch.eye(*m32.shape, dtype=m32.dtype, device=m32.device)
                 )
+                q = q32.to(dtype=m.dtype)
                 Q.append(torch.fliplr(q))
 
         return Q
@@ -278,11 +280,12 @@ class SOAP(torch.optim.Optimizer):
             if m is None:
                 Q.append(None)
             else:
-                m, q = m.to(torch.float32), q.to(torch.float32)
-                mq = m @ q
-                eigen = torch.einsum("ij,ij->j", q, mq)
+                m32, q32 = m.to(dtype=torch.float32), q.to(dtype=torch.float32)
+                mq32 = m32 @ q32
+                eigen = torch.einsum("ij,ij->j", q32, mq32)
                 order = torch.argsort(eigen, descending=True)
-                q[:, order], _ = torch.linalg.qr(mq[:, order])
+                q32[:, order], _ = torch.linalg.qr(mq32[:, order])
+                q = q32.to(dtype=q.dtype)
                 Q.append(q)
 
         return Q
