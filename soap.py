@@ -116,7 +116,8 @@ class SOAP(optim.Optimizer):
         if closure is None:
             loss = None
         else:
-            loss = closure()
+            with torch.enable_grad():
+                loss = closure()
         
         for group in self.param_groups:
             for p in group["params"]:
