@@ -17,3 +17,18 @@ We will release an improved version of the optimizer with support for lower prec
 
 
 Haydn Jones has implemented a JAX version at https://github.com/haydn-jones/SOAP_JAX, though we have not yet verified the implementation.
+
+## Complex parameters
+
+SOAP supports `complex64` and `complex128` by optimizing the corresponding
+`torch.view_as_real` tensor, with moments and preconditioners in the matching
+real precision. No separate optimizer configuration is required.
+
+All options apply to that real tensor, including its trailing size-2 axis.
+This affects dimension merging, preconditioning, normalization, and
+`channels_last` handling; a complex vector is treated as a real matrix.
+This is real-coordinate SOAP, not a unitary-invariant complex optimizer.
+
+Resume checkpoints with the same complex precision and `data_format`.
+Mismatched checkpoint precision raises `ValueError`; `data_format` is not
+stored in the optimizer state dictionary.

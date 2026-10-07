@@ -12,6 +12,10 @@ class SOAP(optim.Optimizer):
     """
     Implements SOAP algorithm (https://arxiv.org/abs/2409.11321).
 
+    Complex parameters are optimized as their torch.view_as_real() tensors,
+    including the trailing size-2 axis in all dimension-dependent options.
+    Moments and preconditioners use the corresponding real dtype.
+
     Parameters:
         params (`Iterable[nn.parameter.Parameter]`):
             Iterable of parameters to optimize or dictionaries defining parameter groups.
@@ -75,6 +79,24 @@ class SOAP(optim.Optimizer):
         }
         super().__init__(params, defaults)
         self._data_format = data_format
+
+    def load_state_dict(self, state_dict):
+        # PyTorch preserves saved tensor dtypes when loading complex parameters.
+        # Reject precision changes before replacing any optimizer state.
+        for group, saved_group in zip(self.param_groups, state_dict["param_groups"]):
+            for p, saved_id in zip(group["params"], saved_group["params"]):
+                if not p.is_complex():
+                    continue
+                saved = state_dict["state"].get(saved_id, {})
+                tensors = [saved[key] for key in ("exp_avg", "exp_avg_sq") if key in saved]
+                tensors.extend(saved.get("GG", []))
+                tensors.extend(saved.get("Q") or [])
+                if any(isinstance(t, torch.Tensor) and t.dtype != p.real.dtype for t in tensors):
+                    raise ValueError(
+                        "SOAP complex checkpoint precision must match the parameter's "
+                        "real dtype; cross-precision loading is not supported."
+                    )
+        return super().load_state_dict(state_dict)
         
     def merge_dims(self, grad, max_precond_dim):
         """
@@ -123,6 +145,8 @@ class SOAP(optim.Optimizer):
                 if p.grad is None:
                     continue
                 grad = p.grad
+                if p.is_complex():
+                    grad = torch.view_as_real(grad.resolve_conj())
 
                 state = self.state[p]
                 
@@ -189,6 +213,8 @@ class SOAP(optim.Optimizer):
                 if group["normalize_grads"]:
                     norm_grad = norm_grad / (1e-30+torch.mean(norm_grad**2)**0.5)
                 
+                if p.is_complex():
+                    norm_grad = torch.view_as_complex(norm_grad.contiguous())
                 p.add_(norm_grad, alpha=-step_size)
                 
 
@@ -222,7 +248,7 @@ class SOAP(optim.Optimizer):
             if not precondition_1d or grad.shape[0] > max_precond_dim:
                 state['GG'].append([])
             else:
-                state['GG'].append(torch.zeros(grad.shape[0], grad.shape[0], device=grad.device))
+                state['GG'].append(torch.zeros(grad.shape[0], grad.shape[0], device=grad.device, dtype=grad.dtype))
         else:
             if merge_dims:
                 grad = self.merge_dims(grad, max_precond_dim)
@@ -231,7 +257,7 @@ class SOAP(optim.Optimizer):
                 if sh > max_precond_dim:
                     state['GG'].append([])
                 else:
-                    state['GG'].append(torch.zeros(sh, sh, device=grad.device))
+                    state['GG'].append(torch.zeros(sh, sh, device=grad.device, dtype=grad.dtype))
                     
         state['Q'] = None # Will hold all the eigenbases of the preconditioner.
         state['precondition_frequency'] = precondition_frequency
@@ -338,35 +364,21 @@ class SOAP(optim.Optimizer):
         """
         Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
         """
-        matrix = []
-        for m in mat:
-            if len(m) == 0:
-                matrix.append([])
-                continue
-            if m.data.dtype != torch.float:
-                float_data = False
-                original_type = m.data.dtype
-                original_device = m.data.device
-                matrix.append(m.data.float())
-            else:
-                float_data = True
-                matrix.append(m.data)
-        
         final = []
-        for m in matrix:
+        for m in mat:
             if len(m) == 0:
                 final.append([])
                 continue
+            original_type = m.dtype
+            # Preserve float64; only promote lower precision for linalg kernels.
+            if m.dtype not in (torch.float32, torch.float64):
+                m = m.float()
             try:
-                _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device))
+                _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device, dtype=m.dtype))
             except:
-                _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device))
-                Q = Q.to(m.dtype)
+                _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device, dtype=torch.float64))
             Q = torch.flip(Q, [1])
-
-            if not float_data:
-                Q = Q.to(original_device).type(original_type)
-            final.append(Q)
+            final.append(Q.to(original_type))
         return final
         
 
@@ -378,24 +390,6 @@ class SOAP(optim.Optimizer):
         precond_list = state['GG']
         orth_list = state['Q']
 
-        matrix = []
-        orth_matrix = []
-        for m,o in zip(precond_list, orth_list):
-            if len(m) == 0:
-                matrix.append([])
-                orth_matrix.append([])
-                continue
-            if m.data.dtype != torch.float:
-                float_data = False
-                original_type = m.data.dtype
-                original_device = m.data.device
-                matrix.append(m.data.float())
-                orth_matrix.append(o.data.float())
-            else:
-                float_data = True
-                matrix.append(m.data.float())
-                orth_matrix.append(o.data.float())
-        
         orig_shape = state['exp_avg_sq'].shape
         if self._data_format == 'channels_last' and len(orig_shape) == 4:
             permuted_shape = state['exp_avg_sq'].permute(0, 3, 1, 2).shape
@@ -405,10 +399,13 @@ class SOAP(optim.Optimizer):
             exp_avg_sq = state['exp_avg_sq']
             
         final = []
-        for ind, (m,o) in enumerate(zip(matrix, orth_matrix)):
+        for ind, (m,o) in enumerate(zip(precond_list, orth_list)):
             if len(m)==0:
                 final.append([])
                 continue
+            original_type = m.dtype
+            if m.dtype not in (torch.float32, torch.float64):
+                m, o = m.float(), o.float()
             est_eig = torch.diag(o.T @ m @ o)
             sort_idx = torch.argsort(est_eig, descending=True)
             exp_avg_sq = exp_avg_sq.index_select(ind, sort_idx)
@@ -416,9 +413,7 @@ class SOAP(optim.Optimizer):
             power_iter = m @ o
             Q, _ = torch.linalg.qr(power_iter)
 
-            if not float_data:
-                Q = Q.to(original_device).type(original_type)
-            final.append(Q)
+            final.append(Q.to(original_type))
         
         if merge_dims:
             if self._data_format == 'channels_last' and len(orig_shape) == 4:
@@ -428,5 +423,3 @@ class SOAP(optim.Optimizer):
                 
         state['exp_avg_sq'] = exp_avg_sq
         return final
-    
-    
